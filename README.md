@@ -4,20 +4,32 @@ Delegate scoped tasks to your existing Google `agy` CLI from an agent with local
 
 ## Install
 
-Install Python 3, Git and the official `agy` CLI, then sign in interactively with `agy`. Clone this repository and run:
+Once the npm package is published, run:
 
 ```sh
-git clone https://github.com/italomlp/agy-delegate.git
-cd agy-delegate
-python3 install.py install --host both
-agy-delegate doctor
+npx agy-delegate
 ```
 
-Choose `--host codex` or `--host opencode` to install for one host. The installer previews paths and asks before writing, refuses to overwrite different files, and copies the helper to `~/.local/bin`; add that directory to PATH if needed. It installs the skill in `~/.agents/skills/agy-delegate` for Codex and `~/.config/opencode/skills/agy-delegate` for OpenCode. Start a new agent session to load skills. The Codex CLI and local Codex desktop share the skill convention; OpenCode discovery may differ by release, particularly OpenCode 2: verify with the host's skill list. Compatibility has not yet been verified with live host sessions. The helper needs access to the same local filesystem and `agy`; cloud-only sessions do not inherit a local installation.
+The installer asks whether to install globally (the default) or in the current project, then uses the `skills` CLI to select agents. It installs the shared helper to `~/.local/bin`. Node.js 22.20 or newer, Python 3, and the official `agy` CLI are needed; sign in to `agy` interactively before using it. The installer warns if `agy` is unavailable and explains how to put the helper on PATH. Skill files are copied, so they do not depend on the temporary npm cache.
 
-For another agent, copy `skills/agy-delegate` into its skill directory and `agy-delegate.py` to a PATH directory named `agy-delegate`. If the host does not discover skills, add equivalent instructions to its own instruction file. A host may require an explicit skill invocation or user permission; automatic use cannot override its policies or be guaranteed by this package.
+For automation, choose at least one agent and scope explicitly:
 
-To remove unchanged installed files, run `python3 install.py uninstall --host both`. Modified files and configuration are preserved. `--yes` skips the confirmation; `--prefix` and `--home` change installation destinations.
+```sh
+npx agy-delegate --global --agent codex --agent opencode --yes
+npx agy-delegate --project --agent claude-code --yes
+```
+
+The supported agent list and skill locations come from the bundled `skills` CLI. Codex CLI and local Codex desktop use the Codex skill location. OpenCode 1 and 2, Claude Code, Cursor, and other agents are offered where supported by `skills`; actual discovery depends on the host and its version. Start a new session. Automatic delegation is advisory: the host must discover and follow the skill, and host policies take precedence. Cloud-only sessions cannot access a local `agy` installation without a supported connection.
+
+The installer refuses to overwrite a different helper. To upgrade, move the existing helper aside after reviewing it, then rerun the installer; retain your configuration. For uninstall, run `npx agy-delegate uninstall`. This removes the helper only if it matches that package version, and preserves configuration and skill files. Inspect the installed skill before removing it with `npx skills remove agy-delegate` (add `--global` for global installations). This separate step prevents automatic deletion of modified skills.
+
+A Node-free alternative is to clone this repository and run:
+
+```sh
+python3 install.py install --host both
+```
+
+Use `--host codex` or `--host opencode` for one host, or copy `skills/agy-delegate` and `agy-delegate.py` manually. The Python installer previews paths and refuses to overwrite different files. Run `python3 install.py uninstall --host both` to remove matching files. `--yes` skips its confirmation; `--prefix` and `--home` override destinations. Run `agy-delegate doctor` to check the helper and `agy` path.
 
 ## Usage
 

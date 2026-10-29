@@ -1,0 +1,10 @@
+{
+  "name": "agy-delegate",
+  "version": "0.1.0",
+  "description": "Install a portable AGY delegation skill and helper",
+  "license": "MIT",
+  "bin": { "agy-delegate-install": "bin/install.js" },
+  "files": ["bin/", "agy-delegate.py", "install.py", "skills/", "README.md", "LICENSE"],
+  "engines": { "node": ">=22.20.0" },
+  "dependencies": { "skills": "1.7.2" }
+}
