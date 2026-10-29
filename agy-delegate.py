@@ -74,6 +74,7 @@ def main():
   out=out.decode(errors='replace')[-100000:]; err=err.decode(errors='replace')[-4000:]; combined=out+'\n'+err
   # Errors take precedence over quota to prevent unsafe retries.
   if timed: status='timeout'
+  elif code != 0 and re.search(r'(?is)(listen tcp[^\n]*socket: operation not permitted|read-only file system)',err): status='environment_restricted'
   elif re.search(r'(?i)(unauthenticated|authentication|login required|permission denied|permission required|invalid argument)',combined): status='permission_or_auth_error'
   elif re.search(r'(?i)(quota (?:exceeded|exhausted)|rate.limit|resource.exhausted|too many requests|\b429\b)',combined): status='quota'
   elif code!=0: status='error'
@@ -81,9 +82,13 @@ def main():
   else: status='success'
   match=re.search(r'(?i)conversation(?:[ _-]?id)?["\s:=]+([\w-]{6,128})',combined)
   after=snapshot(work); changed=baseline is not None and after!=baseline
-  attempts.append({'model':model,'status':status,'exit_code':code,'output':out,'stderr':err,'conversation_id':a.conversation or (match.group(1) if match else None),'workspace_changed':changed if baseline is not None else None})
+  model_unconfirmed=bool(re.search(r'(?i)model id .*?not in local config, defaulting',err))
+  attempts.append({'model':model,'model_unconfirmed':model_unconfirmed,'status':status,'exit_code':code,'output':out,'stderr':err,'conversation_id':a.conversation or (match.group(1) if match else None),'workspace_changed':changed if baseline is not None else None})
   if status!='quota' or changed or (baseline is None and not a.read_only): break
  result={'status':status,'model':model,'attempts':attempts,'conversation_id':attempts[-1]['conversation_id'],'workspace_changed':attempts[-1]['workspace_changed']}
+ if status=='environment_restricted': result['message']='agy could not start because its environment denied filesystem or network access. Check host permissions for agy state and network; do not bypass host policy.'
+ if model_unconfirmed: result['model_warning']='agy reported the requested model was not in local config and used a default; check agy models and configuration.'
+ if model_unconfirmed and status=='success': result['message']=result['model_warning']
  if status=='quota': result['message']='Inspect partial work before retrying; if unavailable, use an allowed native subagent or continue directly.'
  if status=='permission_or_auth_error': result['message']='Check login and headless permissions. No permissions were auto-approved.'
  print(json.dumps(result,ensure_ascii=False)); return 0 if status=='success' else 1

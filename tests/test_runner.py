@@ -32,3 +32,13 @@ class AdditionalTests(unittest.TestCase):
  def test_timeout(self):
   with tempfile.TemporaryDirectory() as d:
    fake=Path(d)/'fake'; fake.write_text('#!/bin/sh\nsleep 10\n'); fake.chmod(0o755); env=dict(os.environ,AGY_BIN=str(fake),AGY_DELEGATE_CONFIG=str(Path(d)/'cfg')); p=subprocess.run(['python3',str(RUN),'run','--timeout','1','hello'],cwd=d,env=env,capture_output=True,text=True); self.assertEqual(json.loads(p.stdout)['status'],'timeout')
+
+class DiagnosticsTests(unittest.TestCase):
+ def run_fake(self, stderr, exit_code=1):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d); fake=root/'agy'; fake.write_text('#!/usr/bin/env python3\nimport sys\nsys.stderr.write('+repr(stderr)+')\nprint("ok" if '+str(exit_code)+' == 0 else "", end="")\nsys.exit('+str(exit_code)+')\n'); fake.chmod(0o755)
+   env=dict(os.environ, AGY_BIN=str(fake), AGY_DELEGATE_CONFIG=str(root/'config')); proc=subprocess.run(['python3',str(RUN),'run','--read-only','hello'],cwd=d,env=env,capture_output=True,text=True); return json.loads(proc.stdout)
+ def test_sandbox_denial_is_identified(self):
+  result=self.run_fake('Failed to start: listen tcp 127.0.0.1:0: socket: operation not permitted\nread-only file system'); self.assertEqual(result['status'],'environment_restricted'); self.assertEqual(len(result['attempts']),1); self.assertIn('permissions',result['message'].lower())
+ def test_model_fallback_warning_is_visible_on_success(self):
+  result=self.run_fake('Model ID Claude not in local config, defaulting to CCPA',0); self.assertTrue(result['attempts'][0]['model_unconfirmed']); self.assertIn('model',result['message'].lower())
