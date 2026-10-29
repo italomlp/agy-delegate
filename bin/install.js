@@ -3,12 +3,32 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const readline = require('node:readline/promises');
 const { spawn, spawnSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const helper = path.join(root, 'agy-delegate.py');
 const target = path.join(os.homedir(), '.local', 'bin', 'agy-delegate');
 const skill = path.join(root, 'skills', 'agy-delegate');
+const receipt = path.join(os.homedir(), '.local', 'share', 'agy-delegate', 'installer.json');
+const legacyHashes = new Set([
+ 'ebd3309921c3420dd21ff210b79eba826be0ffd04210ecf2b85bfe19170809ae',
+ '4296374cfc72eb4eb820bfb218a8608cbb4e2da047696d2994b56237b4d1d900',
+ '82f1097423dd1e650e1386a7366ff1303957804899fca58bebb6d4973ad9f9f5',
+]);
+function hash(file) { return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'); }
+function managed(file) {
+ if (!fs.existsSync(file) || fs.lstatSync(file).isSymbolicLink() || !fs.lstatSync(file).isFile()) return false;
+ const digest=hash(file);
+ if (digest===hash(helper) || legacyHashes.has(digest)) return true;
+ try { return JSON.parse(fs.readFileSync(receipt,'utf8')).helperSha256===digest; } catch { return false; }
+}
+function saveReceipt() {
+ fs.mkdirSync(path.dirname(receipt),{recursive:true});
+ const temp=receipt+'.'+process.pid+'.tmp';
+ try { fs.writeFileSync(temp,JSON.stringify({helperSha256:hash(target)})+'\n',{mode:0o600,flag:'wx'}); fs.renameSync(temp,receipt); }
+ finally { try { fs.unlinkSync(temp); } catch(e) { if(e.code!=='ENOENT') throw e; } }
+}
 function usage() {
  console.log('Usage: npx agy-delegate [--global|--project] [--agent NAME ...] [--yes]\n       npx agy-delegate uninstall [--yes]\n\nWithout options, choose scope and agents interactively.');
 }
@@ -39,7 +59,7 @@ async function main() {
  }
  if(action==='uninstall') {
   if(fs.existsSync(target)) {
-   if(!same(target,helper)) throw Error('Helper differs from this package and was preserved: '+target);
+   if(!managed(target)) throw Error('Helper is not a recognized unmodified installation and was preserved: '+target);
    if(!yes) { if(!process.stdin.isTTY) throw Error('Use --yes to uninstall noninteractively.'); const rl=readline.createInterface({input:process.stdin,output:process.stdout}); const reply=await rl.question('Remove unchanged helper at '+target+'? [y/N] '); rl.close(); if(!/^y(es)?$/i.test(reply.trim())) return 1; }
    fs.unlinkSync(target); console.log('Removed '+target);
   } else console.log('Helper not installed: '+target);
@@ -50,7 +70,7 @@ async function main() {
  if(!locate(process.env.AGY_BIN||'agy')) console.error('Warning: agy was not found or could not start. Install and authenticate it before use.');
  console.log('Helper destination: '+target);
  if(!(process.env.PATH||'').split(path.delimiter).includes(path.dirname(target))) console.warn('Add '+path.dirname(target)+' to PATH to run agy-delegate.');
- if(fs.existsSync(target) && !same(target,helper)) throw Error('Existing helper differs and was preserved: '+target+'; move it aside or restore the matching version before installing.');
+ if(fs.existsSync(target) && !managed(target)) throw Error('Existing helper is not a recognized unmodified installation and was preserved: '+target+'; move it aside after reviewing it.');
  if(!scope) {
   if(yes) throw Error('Specify --global or --project with --yes.');
   if(!process.stdin.isTTY) throw Error('Interactive input unavailable; specify --global or --project and --agent NAME --yes.');
@@ -67,8 +87,11 @@ async function main() {
  const result=await skills(skillArgs);
  if(result!==0) { console.error('Skill installation did not complete; helper was not installed.'); return result; }
  fs.mkdirSync(path.dirname(target),{recursive:true});
- if(!fs.existsSync(target)) fs.copyFileSync(helper,target,fs.constants.COPYFILE_EXCL);
- fs.chmodSync(target,0o755);
+ if(fs.existsSync(target) && !managed(target)) throw Error('Helper changed during installation; preserved: '+target);
+ const temp=target+'.'+process.pid+'.tmp';
+ try { fs.copyFileSync(helper,temp,fs.constants.COPYFILE_EXCL); fs.chmodSync(temp,0o755); fs.renameSync(temp,target); }
+ finally { try { fs.unlinkSync(temp); } catch(e) { if(e.code!=='ENOENT') throw e; } }
+ saveReceipt();
  console.log('Helper installed: '+target+'\nStart a new agent session. Automatic delegation depends on skill discovery and host policies.');
  return 0;
 }
