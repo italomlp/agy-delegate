@@ -42,3 +42,11 @@ class DiagnosticsTests(unittest.TestCase):
   result=self.run_fake('Failed to start: listen tcp 127.0.0.1:0: socket: operation not permitted\nread-only file system'); self.assertEqual(result['status'],'environment_restricted'); self.assertEqual(len(result['attempts']),1); self.assertIn('permissions',result['message'].lower())
  def test_model_fallback_warning_is_visible_on_success(self):
   result=self.run_fake('Model ID Claude not in local config, defaulting to CCPA',0); self.assertTrue(result['attempts'][0]['model_unconfirmed']); self.assertIn('model',result['message'].lower())
+
+class PermissionPreviewTests(unittest.TestCase):
+ def test_preview_reports_actual_scope_without_starting_renamed_cli(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d); marker=root/'started'; fake=root/'fake'; fake.write_text('#!/bin/sh\ntouch '+str(marker)+'\n'); fake.chmod(0o755)
+   env=dict(os.environ,AGY_BIN=str(fake),AGY_DELEGATE_CONFIG=str(root/'config'))
+   p=subprocess.run(['python3',str(RUN),'run','--preview','--read-only','--dir',d,'specific task'],env=env,capture_output=True,text=True)
+   self.assertEqual(p.returncode,0,p.stderr); out=json.loads(p.stdout); self.assertEqual(out['status'],'preview'); self.assertEqual(out['prompt'],'specific task'); self.assertEqual(out['workspace'],str(root)); self.assertFalse(out['read_only_enforced']); self.assertFalse(marker.exists()); self.assertIn('network',str(out).lower())

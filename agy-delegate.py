@@ -36,7 +36,7 @@ def snapshot(path):
  h.update(p.stdout); return h.hexdigest()
 def main():
  p=argparse.ArgumentParser(prog='agy-delegate'); sub=p.add_subparsers(dest='action',required=True)
- run=sub.add_parser('run'); run.add_argument('prompt'); run.add_argument('--dir',default='.'); run.add_argument('--complexity',choices=['simple','medium','complex'],default='medium'); run.add_argument('--model'); run.add_argument('--timeout',type=int,default=900); run.add_argument('--max-retries',type=int); run.add_argument('--conversation'); run.add_argument('--automatic',action='store_true'); run.add_argument('--force',action='store_true'); run.add_argument('--sandbox',action='store_true'); run.add_argument('--read-only',action='store_true',help='Task asks agy not to edit; permits quota retry without a Git snapshot')
+ run=sub.add_parser('run'); run.add_argument('prompt'); run.add_argument('--dir',default='.'); run.add_argument('--complexity',choices=['simple','medium','complex'],default='medium'); run.add_argument('--model'); run.add_argument('--timeout',type=int,default=900); run.add_argument('--max-retries',type=int); run.add_argument('--conversation'); run.add_argument('--automatic',action='store_true'); run.add_argument('--force',action='store_true'); run.add_argument('--sandbox',action='store_true'); run.add_argument('--read-only',action='store_true',help='Task asks agy not to edit; permits quota retry without a Git snapshot'); run.add_argument('--preview',action='store_true',help='Describe the proposed run without launching agy')
  auto=sub.add_parser('auto'); auto.add_argument('value',choices=['on','off']); sub.add_parser('status'); sub.add_parser('doctor')
  a=p.parse_args(); c=config()
  if a.action=='auto': c['auto']=a.value=='on'; save(c); print('Automatic delegation: '+a.value); return 0
@@ -50,7 +50,10 @@ def main():
  if not work.is_dir(): p.error('directory does not exist')
  models=c['models'][a.complexity]; models=([a.model]+[x for x in models if x!=a.model]) if a.model else models
  if not models or any(not isinstance(m,str) or not m or m.startswith('-') for m in models): p.error('configure valid model names')
- retries=a.max_retries if a.max_retries is not None else c['max_retries']; attempts=[]; baseline=snapshot(work)
+ retries=a.max_retries if a.max_retries is not None else c['max_retries']
+ if a.preview:
+  print(json.dumps({'status':'preview','prompt':a.prompt,'workspace':str(work),'requested_model':models[0], 'fallback_models':list(dict.fromkeys(models))[1:retries+1], 'agy_binary':shutil.which(os.environ.get('AGY_BIN','agy')), 'read_only_requested':a.read_only, 'read_only_enforced':False, 'agy_sandbox_requested':a.sandbox, 'access':{'workspace':'agy is launched in this directory with --add-dir; actual access can extend beyond it as allowed by host and agy permissions', 'agy_state':'agy may need access to its local authentication and state directory', 'network':'agy may require localhost sockets and outbound network to its configured service', 'data':'the prompt and any accessible material agy chooses to use may be transmitted to its configured provider', 'environment':'agy inherits the helper process environment'}, 'note':'Preview does not launch agy, verify access, identify the actual provider endpoint, or grant host approval.'},ensure_ascii=False)); return 0
+ attempts=[]; baseline=snapshot(work)
  for model in list(dict.fromkeys(models))[:retries+1]:
   cmd=[os.environ.get('AGY_BIN','agy'),'--print',a.prompt,'--model',model,'--print-timeout',f'{a.timeout}s','--disable-slash-commands','--add-dir',str(work)]
   if a.conversation: cmd+=['--conversation',a.conversation]
